@@ -17,6 +17,10 @@
 
 #include "particle_functions.H"
 
+#include "chrono"
+
+using namespace std::chrono;
+
 // argv contains the name of the inputs file entered at the command line
 void main_driver(const char* argv)
 {
@@ -85,10 +89,10 @@ void main_driver(const char* argv)
         ngp = 2;
     }
     else if (*(std::max_element(pkernel_es.begin(),pkernel_es.begin()+nspecies)) == 4) {
-        ngp = 2;
+        ngp = 3;
     }
     else if (*(std::max_element(pkernel_es.begin(),pkernel_es.begin()+nspecies)) == 6) {
-        ngp = 3;
+        ngp = 4;
     }
     else if (*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)) > 0) {
 	ngp = static_cast<int>(floor(*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)))/2+1);
@@ -142,16 +146,21 @@ void main_driver(const char* argv)
             phiSeed      = 6*ParallelDescriptor::MyProc() + seed + 4;
             generalSeed  = 6*ParallelDescriptor::MyProc() + seed + 5;
             cppSeed  = 6*ParallelDescriptor::MyProc() + seed + 6;
-        }else
-        {
-
-                //generate cppSeed from clock time or something.
+            InitRandom(cppSeed+ParallelDescriptor::MyProc());
+        } else if (seed == 0) {
+            // initializes the seed for C++ random number calls based on the clock
+            auto now = time_point_cast<nanoseconds>(system_clock::now());
+            int randSeed = now.time_since_epoch().count();
+            // broadcast the same root seed to all processors
+            ParallelDescriptor::Bcast(&randSeed,1,ParallelDescriptor::IOProcessorNumber());
+            
+            InitRandom(randSeed+ParallelDescriptor::MyProc());
+        } else {
+        Abort("Must supply non-negative seed");
         }
 
         //Initialise rngs
         rng_initialize(&fhdSeed,&particleSeed,&selectorSeed,&thetaSeed,&phiSeed,&generalSeed);
-
-        InitRandom(cppSeed*ParallelDescriptor::MyProc()+cppSeed);
 
         // Initialize the boxarray "ba" from the single box "bx"
         ba.define(domain);
@@ -1018,7 +1027,7 @@ void main_driver(const char* argv)
 
                 Real check;
 //                particles.clearMobilityMatrix();
-//                for(int ii=101;ii<=1700;ii++)
+//                for(int ii=101;ii<=3300;ii++)
 //                {
 //                    particles.SetForce(ii,1,0,0);
 //                    for (int d=0; d<AMREX_SPACEDIM; ++d) {

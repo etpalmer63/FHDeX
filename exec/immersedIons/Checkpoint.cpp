@@ -347,42 +347,49 @@ void ReadCheckPoint(int& step,
     int n_ranks;
     MPI_Comm_size(MPI_COMM_WORLD, &n_ranks);
 
-    // don't read in all the rng states at once (overload filesystem)
-    // one at a time write out the rng states to different files, one for each MPI rank
-    for (int rank=0; rank<n_ranks; ++rank) {
+    if (seed < 0) {
 
-        if (comm_rank == rank) {
+        // read in rng state from checkpoint
+        // don't read in all the rng states at once (overload filesystem)
+        // one at a time read the rng states to different files, one for each MPI rank
+        for (int rank=0; rank<n_ranks; ++rank) {
+
+            if (comm_rank == rank) {
     
-            if (seed < 0) {
-               // create filename, e.g. chk0000005/rng0000002
-               std::string FileBase(checkpointname + "/rng");
-               std::string File = amrex::Concatenate(FileBase,comm_rank,7);
-
-               // read in contents
-               Vector<char> fileCharPtr;
-               ReadFile(File, fileCharPtr);
-               std::string fileCharPtrString(fileCharPtr.dataPtr());
-               std::istringstream is(fileCharPtrString, std::istringstream::in);
-
-               // restore random state
-               amrex::RestoreRandomState(is, 1, 0);
-	    }
-	    else if (seed == 0) {
-	       auto now = time_point_cast<nanoseconds>(system_clock::now());
-	       // initializes the seed for C++ random number calls
-               //Print() <<  "Now in nanoseconds:" << now.time_since_epoch().count() << std::endl;
-               InitRandom(now.time_since_epoch().count()+ParallelDescriptor::MyProc());
+                if (seed < 0) {
+                    // create filename, e.g. chk0000005/rng0000002
+                    std::string FileBase(checkpointname + "/rng");
+                    std::string File = amrex::Concatenate(FileBase,comm_rank,7);
+                    
+                    // read in contents
+                    Vector<char> fileCharPtr;
+                    ReadFile(File, fileCharPtr);
+                    std::string fileCharPtrString(fileCharPtr.dataPtr());
+                    std::istringstream is(fileCharPtrString, std::istringstream::in);
+                    
+                    // restore random state
+                    amrex::RestoreRandomState(is, 1, 0);
+                }
             }
-	    else
-	    {
-	       // initializes the seed for C++ random number calls
-               InitRandom(seed+ParallelDescriptor::MyProc());
-	    }
+
+            ParallelDescriptor::Barrier();
 
         }
 
-        ParallelDescriptor::Barrier();
-
+    }
+    else if (seed == 0) {
+                
+        // initializes the seed for C++ random number calls based on the clock
+        auto now = time_point_cast<nanoseconds>(system_clock::now());
+        int randSeed = now.time_since_epoch().count();
+        // broadcast the same root seed to all processors
+        ParallelDescriptor::Bcast(&randSeed,1,ParallelDescriptor::IOProcessorNumber());
+        
+        InitRandom(randSeed+ParallelDescriptor::MyProc());
+    }
+    else {
+        // initializes the seed for C++ random number calls
+        InitRandom(seed+ParallelDescriptor::MyProc());
     }
 
     // read in the MultiFab data
@@ -571,8 +578,6 @@ void ReadCheckPointParticles(FhdParticleContainer& particles, species* particleI
 //    Print() <<  "Box Array: " << bc << std::endl;
 //    Print() <<  "Dist Map: " << dm << std::endl;
 
-    //FhdParticleContainer particlesTemp(geomC, dm, bc, 1);
-    
     // restore particles
 
     //cout << "Restoring!\n";
@@ -582,53 +587,6 @@ void ReadCheckPointParticles(FhdParticleContainer& particles, species* particleI
     //particlesTemp.Checkpoint("testcheck","particle");
     Print() << "Checkpoint contains " << np << " particles." <<std::endl;
     
-//    Real posx[np];
-//    Real posy[np];
-//    Real posz[np];
-//    Real charge[np];
-//
-//    Real sigma[np];
-//    Real epsilon[np];
-//    int speciesV[np];
-//    int pinnedV[np];
-//
-//    Real diffwet[np];
-//    Real diffdry[np];
-//    Real difftot[np];
-//
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " pull down 1 started." <<std::endl;
-//
-//    particlesTemp.PullDown(0, posx, -1, np);
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " pull down 1 finished." <<std::endl;
-//
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " particle 5 xPos: " << posx[4] << std:: endl;
-//
-//    //ParallelDescriptor::Barrier();
-//
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " through barrier." << std:: endl;
-//
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " pull down 2 started." <<std::endl;
-//    particlesTemp.PullDown(0, posy, -2, np);
-//    //std::cout << "Proc " << ParallelDescriptor::MyProc() << " pull down 2 finished." <<std::endl;
-//
-//    particlesTemp.PullDown(0, posz, -3, np);
-//
-//    particlesTemp.PullDown(0, charge, 27, np);
-//
-//    particlesTemp.PullDown(0, sigma, 43, np);
-//    particlesTemp.PullDown(0, epsilon, 44, np);
-//
-//    particlesTemp.PullDown(0, diffdry, 40, np);
-//    particlesTemp.PullDown(0, diffwet, 41, np);
-//    particlesTemp.PullDown(0, difftot, 42, np);
-//
-//    particlesTemp.PullDownInt(0, speciesV, 4, np);
-//
-//    particlesTemp.PullDownInt(0, pinnedV, 6, np);
-//
-//
-//    particles.ReInitParticles(particleInfo, dxp, posx, posy, posz, charge, sigma, epsilon, speciesV, diffdry, diffwet, difftot);
-
     particles.ReInitParticles();
 
     particles.PostRestart();
