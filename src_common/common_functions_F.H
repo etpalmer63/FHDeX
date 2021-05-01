@@ -111,44 +111,6 @@ extern "C"
 ///////////////////////////
 
 ///////////////////////////
-// in debug.F90
-
-    void print_mf(const int* lo, const int* hi,
-                  const amrex::Real* mf,
-                  const int* m_lo, const int* m_hi, const int* nc_m);
-
-///////////////////////////
-
-///////////////////////////
-// in time_step.F90
-
-    void euler_step_stag(const int* lo, const int* hi,
-                    amrex_real* old, const int* oldlo, const int* oldhi,
-                    amrex_real* stagop, const int* stagoplo, const int* stagophi,
-                    amrex_real* newdata, const int* newdatahi, const int* newdatalo,
-                    const int* offset, const amrex_real* dt);
-
-///////////////////////////
-// in find_coords.F90
-
-    void find_face_coords(const amrex_real* real_lo, const amrex_real* real_hi,
-                    amrex_real* xface, const int* xfacelo, const int* xfacehi,
-                    amrex_real* yface, const int* yfacelo, const int* yfacehi,
-#if (AMREX_SPACEDIM == 3)
-                    amrex_real* zface, const int* zfacelo, const int* zfacehi,
-#endif
-                    const amrex_real* dx);
-
-
-    void find_center_coords(const amrex_real* real_lo, const amrex_real* real_hi,
-                    amrex_real* centers, const int* lo, const int* hi,
-                    const amrex_real* dx);
-///////////////////////////
-
-
-
-
-///////////////////////////
 // in find_nodal_values.F90
 
     void find_nodal_values(const int* lo, const int* hi,
@@ -186,16 +148,6 @@ extern "C"
                                 const amrex_real* uy, const int* uylo, const int* uyhi,
                                 amrex_real* maxspeed);
 #endif
-///////////////////////////
-
-///////////////////////////
-// in compute_averages.F90
-
-  void compute_vert_average(const int* lo, const int* hi,
-			    const amrex_real* inputfab, const int* inlo, const int* inhi, const int* insize,
-			    amrex_real* meanfab, const int* mlo, const int* mhi, const int* msize, 
-			    const int* dir, const int* incomp, const int* mcomp, const int* ncomp);
-
 ///////////////////////////
 
 ///////////////////////////
