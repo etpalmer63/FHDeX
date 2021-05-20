@@ -123,37 +123,6 @@ void WriteCheckPoint(int step,
     // kappa
     VisMF::Write(kappa,
                  amrex::MultiFabFileFullPrefix(0, checkpointname, "Level_", "kappa"));
-
-    int check;
-    char str[80];
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_fhd");
-    check = mkdir(str,0777);
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_particle");
-    check = mkdir(str,0777);
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_select");
-    check = mkdir(str,0777);
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_scatter_theta");
-    check = mkdir(str,0777);
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_scatter_phi");
-    check = mkdir(str,0777);
-    
-    strcpy (str,checkpointname.c_str());
-    strcat (str,"/rng_eng_general");
-    check = mkdir(str,0777);
-    
-    // random number engines
-    int digits = 9;
-    //rng_checkpoint(&step,&digits);
     
 }
 
@@ -264,10 +233,6 @@ void ReadCheckPoint(int& step,
                 amrex::MultiFabFileFullPrefix(0, checkpointname, "Level_", "eta"));
     VisMF::Read(kappa,
                 amrex::MultiFabFileFullPrefix(0, checkpointname, "Level_", "kappa"));
-
-    // random number engines
-    int digits = 9;
-    //rng_restart(&restart,&digits);
 }
 
 

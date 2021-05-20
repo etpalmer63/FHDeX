@@ -135,12 +135,6 @@ void main_driver(const char* argv)
         // "seed" controls all of them and gives distinct seeds to each physical process over each MPI process
         // this should be fixed so each physical process has its own seed control
         if (seed > 0) {
-            fhdSeed      = 6*ParallelDescriptor::MyProc() + seed;
-            particleSeed = 6*ParallelDescriptor::MyProc() + seed + 1;
-            selectorSeed = 6*ParallelDescriptor::MyProc() + seed + 2;
-            thetaSeed    = 6*ParallelDescriptor::MyProc() + seed + 3;
-            phiSeed      = 6*ParallelDescriptor::MyProc() + seed + 4;
-            generalSeed  = 6*ParallelDescriptor::MyProc() + seed + 5;
             cppSeed  = 6*ParallelDescriptor::MyProc() + seed + 6;
             InitRandom(cppSeed+ParallelDescriptor::MyProc());
         } else if (seed == 0) {
@@ -154,9 +148,6 @@ void main_driver(const char* argv)
         } else {
         Abort("Must supply non-negative seed");
         }
-
-        //Initialise rngs
-        rng_initialize(&fhdSeed,&particleSeed,&selectorSeed,&thetaSeed,&phiSeed,&generalSeed);
 
         // Initialize the boxarray "ba" from the single box "bx"
         ba.define(domain);
