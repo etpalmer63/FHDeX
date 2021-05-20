@@ -23,7 +23,6 @@
 
   subroutine randomhemisphere(costheta, sintheta, cosphi, sinphi, cx, cy, cz)
 
-    use rng_functions_module
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use iso_c_binding ,    only: c_int
     implicit none
@@ -51,7 +50,6 @@
 
   subroutine rotation(costheta, sintheta, cx, cy)
 
-    use rng_functions_module
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use iso_c_binding ,    only: c_int
     implicit none
@@ -70,7 +68,6 @@
 
   subroutine randomhemisphere(costheta, sintheta, cx, cy, cz)
 
-    use rng_functions_module
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use iso_c_binding ,    only: c_int
     implicit none
@@ -308,7 +305,6 @@
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use cell_sorted_particle_module, only: particle_t
     use paramplane_type_module
-    use rng_functions_module
     use common_namelist_module, only: prob_hi, fixed_dt, graphene_tog
     
     implicit none
@@ -531,7 +527,6 @@
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use cell_sorted_particle_module, only: particle_t
     use paramplane_type_module
-    use rng_functions_module
     use common_namelist_module, only: prob_hi, fixed_dt, graphene_tog
     
     implicit none
@@ -752,7 +747,6 @@
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use cell_sorted_particle_module, only: particle_t
     use paramplane_type_module
-    use rng_functions_module
      use common_namelist_module, only: prob_hi, fixed_dt, mass, k_b, particle_count, prob_lo, t_init, particle_n0, max_step, domega
     
     implicit none
@@ -786,7 +780,6 @@
     use amrex_fort_module, only: amrex_real, amrex_particle_real
     use cell_sorted_particle_module, only: particle_t
     use paramplane_type_module
-    use rng_functions_module
      use common_namelist_module, only: prob_hi, fixed_dt, mass, k_b, particle_count, prob_lo, t_init, particle_n0
     
     implicit none
@@ -856,7 +849,6 @@ subroutine surf_velocity(surf, part, time, oldvel, inttime)
  use amrex_fort_module, only: amrex_real, amrex_particle_real
  use cell_sorted_particle_module, only: particle_t
  use paramplane_type_module
- use rng_functions_module
  use common_namelist_module, only: prob_hi, fixed_dt, particle_neff
  
 

@@ -271,29 +271,26 @@ void main_driver(const char * argv) {
     //___________________________________________________________________________
     // Initialize random number generators
     const int n_rngs = 1;
+        
+        // zero is a clock-based seed
+        int cppSeed = 0;
 
-    // this seems really random :P
-    int fhdSeed      = 1;
-    int particleSeed = 2;
-    int selectorSeed = 3;
-    int thetaSeed    = 4;
-    int phiSeed      = 5;
-    int generalSeed  = 6;
-
-    // each CPU gets a different random seed
-    const int proc = ParallelDescriptor::MyProc();
-    fhdSeed      += proc;
-    particleSeed += proc;
-    selectorSeed += proc;
-    thetaSeed    += proc;
-    phiSeed      += proc;
-    generalSeed  += proc;
-
-    // initialize rngs
-    rng_initialize( & fhdSeed, & particleSeed, & selectorSeed,
-                    & thetaSeed, & phiSeed, & generalSeed);
-
-
+        // "seed" controls all of them and gives distinct seeds to each physical process over each MPI process
+        // this should be fixed so each physical process has its own seed control
+        if (seed > 0) {
+            cppSeed  = 6*ParallelDescriptor::MyProc() + seed + 6;
+            InitRandom(cppSeed+ParallelDescriptor::MyProc());
+        } else if (seed == 0) {
+            // initializes the seed for C++ random number calls based on the clock
+            auto now = time_point_cast<nanoseconds>(system_clock::now());
+            int randSeed = now.time_since_epoch().count();
+            // broadcast the same root seed to all processors
+            ParallelDescriptor::Bcast(&randSeed,1,ParallelDescriptor::IOProcessorNumber());
+            
+            InitRandom(randSeed+ParallelDescriptor::MyProc());
+        } else {
+            Abort("Must supply non-negative seed");
+        }
 
     /****************************************************************************
      *                                                                          *

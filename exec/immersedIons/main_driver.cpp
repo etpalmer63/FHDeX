@@ -146,7 +146,7 @@ void main_driver(const char* argv)
             
             InitRandom(randSeed+ParallelDescriptor::MyProc());
         } else {
-        Abort("Must supply non-negative seed");
+            Abort("Must supply non-negative seed");
         }
 
         // Initialize the boxarray "ba" from the single box "bx"
