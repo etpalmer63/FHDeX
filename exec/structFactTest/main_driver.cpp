@@ -72,18 +72,15 @@ void main_driver(const char* argv)
     
     /////////////////////////////////////////
 
-    Vector< std::string > var_names(2);
+    Vector< std::string > var_names(1);
     var_names[0] = "phi1";
-    var_names[1] = "phi2";
 
     // for the 3 pairs
-    Vector< Real > var_scaling(3);
+    Vector< Real > var_scaling(1);
     var_scaling[0] = 1./dVol;
-    var_scaling[1] = 1./dVol;
-    var_scaling[2] = 1./dVol;
     
     MultiFab struct_cc;
-    struct_cc.define(ba, dmap, 2, 0);
+    struct_cc.define(ba, dmap, 1, 0);
 
     // WRITE INIT ROUTINE
     struct_cc.setVal(0.);
@@ -94,31 +91,19 @@ void main_driver(const char* argv)
 
         const Array4<Real>& struct_fab = struct_cc.array(mfi);
 
-        amrex::ParallelFor(bx, 2, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
-            if (n == 0) {
-                struct_fab(i,j,k,n) = i+j+k;
-            }
-            else if (n == 1) {
-                struct_fab(i,j,k,n) = 0.5*sqrt(i+j+k);
-            }
+            struct_fab(i,j,k) = amrex::Random();//std::sqrt(static_cast<double>(i)) + j*j + k%3;
         });
 
     }
     
-
-    amrex::Vector< int > s_pairA(3);
-    amrex::Vector< int > s_pairB(3);
+    amrex::Vector< int > s_pairA(1);
+    amrex::Vector< int > s_pairB(1);
 
     // Select which variable pairs to include in structure factor:
     s_pairA[0] = 0;
     s_pairB[0] = 0;
-    //
-    s_pairA[1] = 0;
-    s_pairB[1] = 1;
-    //
-    s_pairA[2] = 1;
-    s_pairB[2] = 1;
 
     StructFact structFact(ba,dmap,var_names,var_scaling,s_pairA,s_pairB);
     

@@ -284,6 +284,18 @@ void StructFact::FortStructure(const MultiFab& variables, const Geometry& geom, 
 
   if (ba.size() == ParallelDescriptor::NProcs()) {
       ComputeFFT(variables, variables_dft_real, variables_dft_imag, geom);
+
+  for (MFIter mfi(variables_dft_real); mfi.isValid(); ++mfi) {
+      Array4<Real> const& real = variables_dft_real.array(mfi);
+      Array4<Real> const& imag = variables_dft_imag.array(mfi);
+        amrex::ParallelFor(mfi.fabbox(),
+        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            std::cout << "HACKFFT " << i << " " << j << " " << k << " "
+                      << 16.*std::sqrt(2.)*real(i,j,k,0) << " + " << 16.*std::sqrt(2.)*imag(i,j,k,0) << "i" << std::endl;
+        });
+    }
+
   }
   else {
 
