@@ -769,8 +769,8 @@ void ComputeChi (int nspecies_in,
         W(2) = rhoN[1]/rhotot;
 
         if ( use_multiphase == 1 ){
-            W(1) = std::max(std::min(W(1),1.0),eepsilon);
-            W(2) = std::max(std::min(W(2),1.0),eepsilon);
+            W(1) = amrex::max(amrex::min(W(1),1.0),eepsilon);
+            W(2) = amrex::max(amrex::min(W(2),1.0),eepsilon);
         }
 
         Real tmp = molmass_in[0]*W(2) + molmass_in[1]*W(1);
@@ -947,7 +947,7 @@ void ComputeNonnegativeRhoAv (
        if ((value1 <= 0.0) || (value2 <= 0.0)){
           RhoAv[0] = 0.0;
        } else {
-          RhoAv[0] = std::min( 0.5*(value1 + value2), rho0);
+          RhoAv[0] = amrex::min( 0.5*(value1 + value2), rho0);
        }
        RhoAv[1] = rho0 - RhoAv[0];
 
@@ -964,15 +964,15 @@ void ComputeNonnegativeRhoAv (
                 if ( (value1 <= 0.0) || (value2 <= 0.0) ) {
                    RhoAv[comp-1] = 0.0;
                 } else {
-                   tmp1 = std::min(dv*value1,1.0);
-                   tmp2 = std::min(dv*value2,1.0);
+                   tmp1 = amrex::min(dv*value1,1.0);
+                   tmp2 = amrex::min(dv*value2,1.0);
                    RhoAv[comp-1] = molmass_in[comp-1]*(value1+value2)/2.0*tmp1*tmp2;
                 }
 
             } break;
 
             case 2 :   // Geometric
-                RhoAv[comp-1] = molmass_in[comp-1]*std::sqrt(std::max(value1,0.0)*std::max(value2,0.0));
+                RhoAv[comp-1] = molmass_in[comp-1]*std::sqrt(amrex::max(value1,0.0)*amrex::max(value2,0.0));
             break;
 
             case 3 : {   // Harmonic
