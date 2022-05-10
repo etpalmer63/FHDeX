@@ -17,7 +17,7 @@ void SetupCWall() {
 
     // Compute Xk or Yk at the wall, depending on which is defined
     // X walls
-    if (bc_mass_lo[0] == 2) {
+    if ((bc_mass_lo[0] == 2) or (bc_mass_lo[0] == 3)) {
        sumx = 0.;
        sumy = 0.;
        for (int ns=0; ns<nspecies; ++ns) {
@@ -34,7 +34,31 @@ void SetupCWall() {
        }
     }
 
-    if (bc_mass_hi[0] == 2) {
+    if (bc_mass_lo[0] == 3) {
+        // set reservoir pressure equal to inital ambient pressure (for no flow)
+        // if t_lo/hi is positive, compute rho_lo/hi (default)
+        // if rho_lo/hi is positive, rewrite t_lo/hi (from input script)
+
+        if (p_lo[0] <= 0.0) { // set reservoir pressure to ambient if not specified
+            GpuArray<Real,MAX_SPECIES> massvec;
+            for (int ns=0;ns<nspecies;++ns) massvec[ns] = rhobar[ns];
+            GetPressureGas(p_lo[0],massvec,rho0,T_init[0]);
+        }
+
+        if (rho_lo[0] < 0.0) { // specify reservoir density if not specified
+            GetDensity(p_lo[0],rho_lo[0],t_lo[0],bc_Yk_x_lo);
+        }
+        else if (t_lo[0] <= 0.0) { // specify reservoir temperature if not specified
+            Real molmix = 0.;
+            for (int n=0; n<nspecies; ++n) {
+                molmix += bc_Yk_x_lo[n]/molmass[n];
+            }
+            molmix = 1./molmix;
+            t_lo[0] = p_lo[0]*(molmix/Runiv)/rho_lo[0];
+        }     
+    }
+
+    if ((bc_mass_hi[0] == 2) or (bc_mass_hi[0] == 3)) {
        sumx = 0.;
        sumy = 0.;
        for (int ns=0; ns<nspecies; ++ns) {
@@ -48,6 +72,30 @@ void SetupCWall() {
        } else {
            Abort("SetupCWall: hi-x; mass or mole fractions do not sum to 1");
        }
+    }
+
+    if (bc_mass_hi[0] == 3) {
+        // set reservoir pressure equal to inital ambient pressure (for no flow)
+        // if t_lo/hi is positive, compute rho_lo/hi (default)
+        // if rho_lo/hi is positive, rewrite t_lo/hi (from input script)
+
+        if (p_hi[0] <= 0.0) {  // set reservoir pressure to ambient if not specified
+            GpuArray<Real,MAX_SPECIES> massvec;
+            for (int ns=0;ns<nspecies;++ns) massvec[ns] = rhobar[ns];
+            GetPressureGas(p_hi[0],massvec,rho0,T_init[0]);
+        }
+
+        if (rho_hi[0] < 0.0) { // specify reservoir density  if not specified
+            GetDensity(p_hi[0],rho_hi[0],t_hi[0],bc_Yk_x_hi);
+        }
+        else if (t_hi[0] <= 0.0) { // specify reservoir temperature if not specified
+            Real molmix = 0.;
+            for (int n=0; n<nspecies; ++n) {
+                molmix += bc_Yk_x_hi[n]/molmass[n];
+            }
+            molmix = 1./molmix;
+            t_hi[0] = p_hi[0]*(molmix/Runiv)/rho_hi[0];
+        }     
     }
 
     // Y walls
@@ -117,6 +165,10 @@ void SetupCWall() {
     }
 }
 
+// in this routine for Dirichlet BC, we set the 
+// value in the ghost cell to be the value of the
+// Dirichlet boundary for temperature, species 
+// fraction and velocities
 void setBC(MultiFab& prim_in, MultiFab& cons_in)
 {
     BL_PROFILE_VAR("setBC()",setBC);
@@ -152,21 +204,40 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fracations, reservoir
+            // mass fractions, concentration
             if (bc_mass_lo[0] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i < 0) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_x_lo[n] - prim(2*lo-i-1,j,k,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_x_lo[n] - prim(2*lo-i-1,j,k,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_x_lo[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_x_lo[n];
+                        }
+                    }
+                });
+            }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_lo[0] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (i < 0) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_x_lo[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_x_lo[n]; // set ghost cell equal to reservoir mole fraction
+                            
+                            prim(i,j,k,0) = rho_lo[0]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_lo[0]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_lo[0]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_lo[0]; // set ghost cell equal to reservoir pressure
                         }
                     }
                 });
             }
 
             // temperature and pressure, adiabatic
-            if (bc_therm_lo[0] == 1) {
+            else if (bc_therm_lo[0] == 1) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i < 0) {
@@ -179,23 +250,62 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i < 0) {
-                        prim(i,j,k,4) = -prim(2*lo-i-1,j,k,4) + 2.*t_lo[0];
+                        prim(i,j,k,4) = t_lo[0];
                         prim(i,j,k,5) = prim(2*lo-i-1,j,k,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_lo[0] == 1) { // slip
+            if (bc_mass_lo[0] == 3) { // reservoir
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i < 0) {
 
-                        cons(i,j,k,1) = -cons(2*lo-i-1,j,k,1);
+                        cons(i,j,k,1) = 0.0; 
+                        cons(i,j,k,2) = 0.0;
+                        cons(i,j,k,3) = 0.0;
+
+                        prim(i,j,k,1) = 0.0; 
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
+
+                        // thermal & species (+pressure) BCs must be enforced first
+                        GpuArray<Real,MAX_SPECIES> fracvec;
+                        for (int n=0; n<nspecies; ++n) {
+                            fracvec[n] = prim(i,j,k,6+n);
+                        }
+                        Real temp = prim(i,j,k,4);
+                        Real pt = prim(i,j,k,5);
+                        Real rho = prim(i,j,k,0);
+                        Real intenergy;
+
+                        GetEnergy(intenergy,fracvec,temp);
+
+                        // total density depends on temperature
+                        if (algorithm_type == 2) {
+                            for (int n=0; n<nspecies; ++n) {
+                                cons(i,j,k,5+n) = rho*prim(i,j,k,6+n);
+                            }
+                        }
+
+                        // must be last BC enforced: depends on rho, vel, & temp
+                        cons(i,j,k,4) = rho*intenergy + 0.5*rho*(prim(i,j,k,1)*prim(i,j,k,1) + 
+                                                                 prim(i,j,k,2)*prim(i,j,k,2) +
+                                                                 prim(i,j,k,3)*prim(i,j,k,3));
+                    }
+                });
+            }
+            else if (bc_vel_lo[0] == 1) { // slip
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (i < 0) {
+
+                        cons(i,j,k,1) = 0.0;
                         cons(i,j,k,2) = cons(2*lo-i-1,j,k,2);
                         cons(i,j,k,3) = cons(2*lo-i-1,j,k,3);
 
-                        prim(i,j,k,1) = -prim(2*lo-i-1,j,k,1);
+                        prim(i,j,k,1) = 0.0;
                         prim(i,j,k,2) = prim(2*lo-i-1,j,k,2);
                         prim(i,j,k,3) = prim(2*lo-i-1,j,k,3);
 
@@ -232,9 +342,9 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 {
                     if (i < 0) {
 
-                        prim(i,j,k,1) = -prim(2*lo-i-1,j,k,1);
-                        prim(i,j,k,2) = -prim(2*lo-i-1,j,k,2);
-                        prim(i,j,k,3) = -prim(2*lo-i-1,j,k,3);
+                        prim(i,j,k,1) = 0.0; 
+                        prim(i,j,k,2) = 0.0; 
+                        prim(i,j,k,3) = 0.0; 
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -289,21 +399,40 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fracations, reservoir
+            // mass fractions, concentration
             if (bc_mass_hi[0] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i > n_cells[0]-1) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_x_hi[n] - prim(2*hi-i+1,j,k,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_x_hi[n] - prim(2*hi-i+1,j,k,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_x_hi[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_x_hi[n];
+                        }
+                    }
+                });
+            }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_hi[0] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (i > n_cells[0]-1) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_x_hi[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_x_hi[n]; // set ghost cell equal to reservoir mole fraction
+
+                            prim(i,j,k,0) = rho_hi[0]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_hi[0]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_hi[0]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_hi[0]; // set ghost cell equal to reservoir pressure
                         }
                     }
                 });
             }
 
             // temperature and pressure, adiabatic
-            if (bc_therm_hi[0] == 1) {
+            else if (bc_therm_hi[0] == 1) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i > n_cells[0]-1) {
@@ -316,23 +445,62 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i > n_cells[0]-1) {
-                        prim(i,j,k,4) = -prim(2*hi-i+1,j,k,4) + 2.*t_hi[0];
+                        prim(i,j,k,4) = t_hi[0];
                         prim(i,j,k,5) = prim(2*hi-i+1,j,k,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_hi[0] == 1) { // slip
+            if (bc_mass_hi[0] == 3) { // reservoir
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i > n_cells[0]-1) {
 
-                        cons(i,j,k,1) = -cons(2*hi-i+1,j,k,1);
+
+                        cons(i,j,k,1) = 0.0; 
+                        cons(i,j,k,2) = 0.0;
+                        cons(i,j,k,3) = 0.0;
+
+                        prim(i,j,k,1) = 0.0; 
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
+
+                        // thermal & species (+pressure) BCs must be enforced first
+                        GpuArray<Real,MAX_SPECIES> fracvec;
+                        for (int n=0; n<nspecies; ++n) {
+                            fracvec[n] = prim(i,j,k,6+n);
+                        }
+                        Real temp = prim(i,j,k,4);
+                        Real pt = prim(i,j,k,5);
+                        Real rho = prim(i,j,k,0);
+                        Real intenergy;
+
+                        GetEnergy(intenergy,fracvec,temp);
+
+                        // total density depends on temperature
+                        if (algorithm_type == 2) {
+                            for (int n=0; n<nspecies; ++n) {
+                                cons(i,j,k,5+n) = rho*prim(i,j,k,6+n);
+                            }
+                        }
+
+                        // must be last BC enforced: depends on rho, vel, & temp
+                        cons(i,j,k,4) = rho*intenergy + 0.5*rho*(prim(i,j,k,1)*prim(i,j,k,1) + 
+                                                                 prim(i,j,k,2)*prim(i,j,k,2) +
+                                                                 prim(i,j,k,3)*prim(i,j,k,3));
+                    }
+                });
+            } else if (bc_vel_hi[0] == 1) { // slip
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (i > n_cells[0]-1) {
+
+                        cons(i,j,k,1) = 0.0;
                         cons(i,j,k,2) = cons(2*hi-i+1,j,k,2);
                         cons(i,j,k,3) = cons(2*hi-i+1,j,k,3);
 
-                        prim(i,j,k,1) = -prim(2*hi-i+1,j,k,1);
+                        prim(i,j,k,1) = 0.0;
                         prim(i,j,k,2) = prim(2*hi-i+1,j,k,2);
                         prim(i,j,k,3) = prim(2*hi-i+1,j,k,3);
 
@@ -365,14 +533,13 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                     }
                 });
             } else if (bc_vel_hi[0] == 2) { // no slip
-                
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (i > n_cells[0]-1) {
 
-                        prim(i,j,k,1) = -prim(2*hi-i+1,j,k,1);
-                        prim(i,j,k,2) = -prim(2*hi-i+1,j,k,2);
-                        prim(i,j,k,3) = -prim(2*hi-i+1,j,k,3);
+                        prim(i,j,k,1) = 0.0;
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -425,14 +592,33 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fractions, reservoir
+            // mass fractions, concentration
             if (bc_mass_lo[1] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j < 0) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_y_lo[n] - prim(i,2*lo-j-1,k,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_y_lo[n] - prim(i,2*lo-j-1,k,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_y_lo[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_y_lo[n];
+                        }
+                    }
+                });
+            }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_lo[1] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (j < 0) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_y_lo[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_y_lo[n]; // set ghost cell equal to reservoir mole fraction
+                            
+                            prim(i,j,k,0) = rho_lo[1]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_lo[1]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_lo[1]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_lo[1]; // set ghost cell equal to reservoir pressure
                         }
                     }
                 });
@@ -452,24 +638,26 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j < 0) {
-                        prim(i,j,k,4) = -prim(i,2*lo-j-1,k,4) + 2.*t_lo[1];
+                        prim(i,j,k,4) = t_lo[1];
                         prim(i,j,k,5) = prim(i,2*lo-j-1,k,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_lo[1] == 1) { // slip
+            if (bc_mass_lo[1] == 3) { // reservoir
+
+            } else if (bc_vel_lo[1] == 1) { // slip
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j < 0) {
 
                         cons(i,j,k,1) = cons(i,2*lo-j-1,k,1);
-                        cons(i,j,k,2) = -cons(i,2*lo-j-1,k,2);
+                        cons(i,j,k,2) = 0.0;
                         cons(i,j,k,3) = cons(i,2*lo-j-1,k,3);
 
                         prim(i,j,k,1) = prim(i,2*lo-j-1,k,1);
-                        prim(i,j,k,2) = -prim(i,2*lo-j-1,k,2);
+                        prim(i,j,k,2) = 0.0;
                         prim(i,j,k,3) = prim(i,2*lo-j-1,k,3);
 
                         // thermal & species (+pressure) BCs must be enforced first
@@ -505,9 +693,9 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 {
                     if (j < 0) {
 
-                        prim(i,j,k,1) = -prim(i,2*lo-j-1,k,1);
-                        prim(i,j,k,2) = -prim(i,2*lo-j-1,k,2);
-                        prim(i,j,k,3) = -prim(i,2*lo-j-1,k,3);
+                        prim(i,j,k,1) = 0.0;
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -562,14 +750,33 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fractions, reservoir
+            // mass fractions, concentration
             if (bc_mass_hi[1] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j > n_cells[1]-1) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_y_hi[n] - prim(i,2*hi-j+1,k,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_y_hi[n] - prim(i,2*hi-j+1,k,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_y_hi[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_y_hi[n];
+                        }
+                    }
+                });
+            }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_hi[1] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (j > n_cells[1]-1) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_y_hi[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_y_hi[n]; // set ghost cell equal to reservoir mole fraction
+
+                            prim(i,j,k,0) = rho_hi[1]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_hi[1]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_hi[1]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_hi[1]; // set ghost cell equal to reservoir pressure
                         }
                     }
                 });
@@ -589,24 +796,26 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j > n_cells[1]-1) {
-                        prim(i,j,k,4) = -prim(i,2*hi-j+1,k,4) + 2.*t_hi[1];
+                        prim(i,j,k,4) = t_hi[1];
                         prim(i,j,k,5) = prim(i,2*hi-j+1,k,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_hi[1] == 1) { // slip
+            if (bc_mass_hi[1] == 3) { // reservoir
+
+            } else if (bc_vel_hi[1] == 1) { // slip
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (j > n_cells[1]-1) {
 
                         cons(i,j,k,1) = cons(i,2*hi-j+1,k,1);
-                        cons(i,j,k,2) = -cons(i,2*hi-j+1,k,2);
+                        cons(i,j,k,2) = 0.0;
                         cons(i,j,k,3) = cons(i,2*hi-j+1,k,3);
 
                         prim(i,j,k,1) = prim(i,2*hi-j+1,k,1);
-                        prim(i,j,k,2) = -prim(i,2*hi-j+1,k,2);
+                        prim(i,j,k,2) = 0.0;
                         prim(i,j,k,3) = prim(i,2*hi-j+1,k,3);
 
                         // thermal & species (+pressure) BCs must be enforced first
@@ -643,9 +852,9 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 {
                     if (j > n_cells[1]-1) {
 
-                        prim(i,j,k,1) = -prim(i,2*hi-j+1,k,1);
-                        prim(i,j,k,2) = -prim(i,2*hi-j+1,k,2);
-                        prim(i,j,k,3) = -prim(i,2*hi-j+1,k,3);
+                        prim(i,j,k,1) = 0.0;
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -698,18 +907,38 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fractions, reservoir
+            // mass fractions, concentration
             if (bc_mass_lo[2] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k < 0) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_z_lo[n] - prim(i,j,2*lo-k-1,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_z_lo[n] - prim(i,j,2*lo-k-1,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_z_lo[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_z_lo[n];
                         }
                     }
                 });
             }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_lo[2] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (k < 0) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_z_lo[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_z_lo[n]; // set ghost cell equal to reservoir mole fraction
+                            
+                            prim(i,j,k,0) = rho_lo[2]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_lo[2]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_lo[2]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_lo[2]; // set ghost cell equal to reservoir pressure
+                        }
+                    }
+                });
+            }
+            
 
             // temperature and pressure, adiabatic
             if (bc_therm_lo[2] == 1) {
@@ -725,25 +954,27 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k < 0) {
-                        prim(i,j,k,4) = -prim(i,j,2*lo-k-1,4) + 2.*t_lo[2];
+                        prim(i,j,k,4) = t_lo[2];
                         prim(i,j,k,5) = prim(i,j,2*lo-k-1,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_lo[2] == 1) { // slip
+            if (bc_mass_lo[2] == 3) { // reservoir
+
+            } else if (bc_vel_lo[2] == 1) { // slip
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k < 0) {
 
                         cons(i,j,k,1) = cons(i,j,2*lo-k-1,1);
                         cons(i,j,k,2) = cons(i,j,2*lo-k-1,2);
-                        cons(i,j,k,3) = -cons(i,j,2*lo-k-1,3);
+                        cons(i,j,k,3) = 0.0;
 
                         prim(i,j,k,1) = prim(i,j,2*lo-k-1,1);
                         prim(i,j,k,2) = prim(i,j,2*lo-k-1,2);
-                        prim(i,j,k,3) = -prim(i,j,2*lo-k-1,3);
+                        prim(i,j,k,3) = 0.0;;
 
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -778,9 +1009,9 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 {
                     if (k < 0) {
 
-                        prim(i,j,k,1) = -prim(i,j,2*lo-k-1,1);
-                        prim(i,j,k,2) = -prim(i,j,2*lo-k-1,2);
-                        prim(i,j,k,3) = -prim(i,j,2*lo-k-1,3);
+                        prim(i,j,k,1) = 0.0;
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -835,14 +1066,33 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 });
             }
 
-            // mass fracations, reservoir
+            // mass fractions, concentration
             if (bc_mass_hi[2] == 2 && algorithm_type == 2) {
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k > n_cells[2]-1) {
                         for (int n=0; n<nspecies; ++n) {
-                            prim(i,j,k,6+n)          = 2.*bc_Yk_z_hi[n] - prim(i,j,2*hi-k+1,6+n);
-                            prim(i,j,k,6+nspecies+n) = 2.*bc_Xk_z_hi[n] - prim(i,j,2*hi-k+1,6+nspecies+n);
+                            prim(i,j,k,6+n)          = bc_Yk_z_hi[n];
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_z_hi[n];
+                        }
+                    }
+                });
+            }
+
+            // mass fractions, density, temperature and pressure in the reservoir
+            if (bc_mass_hi[2] == 3 && algorithm_type == 2) {
+                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (k > n_cells[2]-1) {
+                        for (int n=0; n<nspecies; ++n) {
+                            prim(i,j,k,6+n)          = bc_Yk_z_hi[n]; // set ghost cell equal to reservoir mass fraction
+                            prim(i,j,k,6+nspecies+n) = bc_Xk_z_hi[n]; // set ghost cell equal to reservoir mole fraction
+
+                            prim(i,j,k,0) = rho_hi[2]; // set ghost cell equal to reservoir density
+                            cons(i,j,k,0) = rho_hi[2]; // set ghost cell equal to reservoir density
+
+                            prim(i,j,k,4) = t_hi[1]; // set ghost cell equal to reservoir temperature
+                            prim(i,j,k,5) = p_hi[1]; // set ghost cell equal to reservoir pressure
                         }
                     }
                 });
@@ -862,25 +1112,27 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k > n_cells[2]-1) {
-                        prim(i,j,k,4) = -prim(i,j,2*hi-k+1,4) + 2.*t_hi[2];
+                        prim(i,j,k,4) = t_hi[2];
                         prim(i,j,k,5) = prim(i,j,2*hi-k+1,5);
                     }
                 });
             }
 
             // momentum, velocity, rho, rhoY, rhoE
-            if (bc_vel_hi[2] == 1) { // slip
+            if (bc_mass_hi[2] == 3) { // reservoir
+
+            } else if (bc_vel_hi[2] == 1) { // slip
                 amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
                     if (k > n_cells[2]-1) {
 
                         cons(i,j,k,1) = cons(i,j,2*hi-k+1,1);
                         cons(i,j,k,2) = cons(i,j,2*hi-k+1,2);
-                        cons(i,j,k,3) = -cons(i,j,2*hi-k+1,3);
+                        cons(i,j,k,3) = 0.0;
 
                         prim(i,j,k,1) = prim(i,j,2*hi-k+1,1);
                         prim(i,j,k,2) = prim(i,j,2*hi-k+1,2);
-                        prim(i,j,k,3) = -prim(i,j,2*hi-k+1,3);
+                        prim(i,j,k,3) = 0.0;
 
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -916,9 +1168,9 @@ void setBC(MultiFab& prim_in, MultiFab& cons_in)
                 {
                     if (k > n_cells[2]-1) {
 
-                        prim(i,j,k,1) = -prim(i,j,2*hi-k+1,1);
-                        prim(i,j,k,2) = -prim(i,j,2*hi-k+1,2);
-                        prim(i,j,k,3) = -prim(i,j,2*hi-k+1,3);
+                        prim(i,j,k,1) = 0.0;
+                        prim(i,j,k,2) = 0.0;
+                        prim(i,j,k,3) = 0.0;
                    
                         // thermal & species (+pressure) BCs must be enforced first
                         GpuArray<Real,MAX_SPECIES> fracvec;
@@ -1338,6 +1590,8 @@ void StochFlux(std::array<MultiFab, AMREX_SPACEDIM>& faceflux_in,
         // 1 = adiabatic        : multiply fluxes on wall by 0
         // 2 = isothermal   : multiply fluxes on wall by sqrt(2)
         Real factor = (bc_therm_lo[0] == 1) ? 0. : sqrt(2.);
+        // reservoir            : unchanged
+        if (bc_mass_lo[0] == 3) factor = 1.0;
 
         // domain grown nodally based on faceflux_in[0] nodality (x)
         const Box& dom_x = amrex::convert(geom.Domain(), faceflux_in[0].ixType());
@@ -1365,6 +1619,8 @@ void StochFlux(std::array<MultiFab, AMREX_SPACEDIM>& faceflux_in,
         // 1 = adiabatic        : multiply fluxes on wall by 0
         // 2 = isothermal   : multiply fluxes on wall by sqrt(2)
         Real factor = (bc_therm_hi[0] == 1) ? 0. : sqrt(2.);
+        // reservoir            : unchanged
+        if (bc_mass_hi[0] == 3) factor = 1.0;
 
         // domain grown nodally based on faceflux_in[0] nodality (x)
         const Box& dom_x = amrex::convert(geom.Domain(), faceflux_in[0].ixType());

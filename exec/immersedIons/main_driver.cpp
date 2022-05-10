@@ -27,14 +27,11 @@ void main_driver(const char* argv)
 
     std::string inputs_file = argv;
 
-    // read in parameters from inputs file into F90 modules
-    // we use "+1" because of amrex_string_c_to_f expects a null char termination
-    read_common_namelist(inputs_file.c_str(),inputs_file.size()+1);
 
     // copy contents of F90 modules to C++ namespaces
     InitializeCommonNamespace();
     InitializeGmresNamespace();
-    
+        
     int step = 1;
     Real time = 0.;
     int statsCount = 1;
@@ -67,19 +64,37 @@ void main_driver(const char* argv)
     // AJN - for perdictor/corrector do we need one more ghost cell if the predictor pushes
     //       a particle into a ghost region?
     int ang = 1;
-    if (*(std::max_element(pkernel_fluid.begin(),pkernel_fluid.begin()+nspecies)) == 3) {
-        ang = 2;
+    for(int i=0;i<nspecies;i++)
+    {
+        int tempang = 1;
+        if (pkernel_fluid[i] == 3) {
+            tempang = 2;
+        }
+        else if (pkernel_fluid[i] == 4) {
+            tempang = 3;
+        }
+        else if (pkernel_fluid[i] == 6) {
+            tempang = 4;
+        }
+        else if (eskernel_fluid[i] == 4) {
+	        tempang = 3;
+        }
+        else if (eskernel_fluid[i] == 5) {
+	        tempang = 3;
+        }
+        else if (eskernel_fluid[i] == 6) {
+	        tempang = 4;
+        }
+        else {
+	        tempang = floor(eskernel_fluid[i]/2)+1;
+        }
+        
+        if(tempang > ang)
+        {
+            ang = tempang;
+        }   
     }
-    else if (*(std::max_element(pkernel_fluid.begin(),pkernel_fluid.begin()+nspecies)) == 4) {
-        ang = 3;
-    }
-    else if (*(std::max_element(pkernel_fluid.begin(),pkernel_fluid.begin()+nspecies)) == 6) {
-        ang = 4;
-    }
-    else if (*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)) > 0) {
-	ang = static_cast<int>(floor(*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)))/2+1);
-    }
-
+    
     int ngp = 1;
     // using maximum number of peskin kernel points to determine the ghost cells for the whole grid.
     //     not sure if it will cause problem for BCs.
@@ -91,10 +106,7 @@ void main_driver(const char* argv)
     }
     else if (*(std::max_element(pkernel_es.begin(),pkernel_es.begin()+nspecies)) == 6) {
         ngp = 4;
-    }
-    else if (*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)) > 0) {
-	ngp = static_cast<int>(floor(*(std::max_element(eskernel_fluid.begin(),eskernel_fluid.begin()+nspecies)))/2+1);
-    }   
+    } 
 
     // staggered velocities
     // umac needs extra ghost cells for Peskin kernels
@@ -123,14 +135,18 @@ void main_driver(const char* argv)
 
         if (seed > 0) {
             // initializes the seed for C++ random number calls
-            InitRandom(seed+ParallelDescriptor::MyProc());
+            InitRandom(seed+ParallelDescriptor::MyProc(),
+                       ParallelDescriptor::NProcs(),
+                       seed+ParallelDescriptor::MyProc());
         } else if (seed == 0) {
             // initializes the seed for C++ random number calls based on the clock
             auto now = time_point_cast<nanoseconds>(system_clock::now());
             int randSeed = now.time_since_epoch().count();
             // broadcast the same root seed to all processors
             ParallelDescriptor::Bcast(&randSeed,1,ParallelDescriptor::IOProcessorNumber());
-            InitRandom(randSeed+ParallelDescriptor::MyProc());
+            InitRandom(randSeed+ParallelDescriptor::MyProc(),
+                       ParallelDescriptor::NProcs(),
+                       randSeed+ParallelDescriptor::MyProc());
         } else {
             Abort("Must supply non-negative seed");
         }
@@ -343,8 +359,7 @@ void main_driver(const char* argv)
 	      Abort("Please provide eskernel_beta within the range [1,3]*eskernel_fluid.");
 	   }
 
-	   int targetLine = (eskernel_beta[j]-eskernel_fluid[j])*10+1;
-	   //Print() << targetLine << std::endl;
+       int targetLine = ((int)(10*eskernel_beta[j])-10*eskernel_fluid[j])+1;
 	   std::ifstream wetRad_w4("wetRad_w4.dat");
 	   for (int lineCount=0; lineCount < targetLine-1; lineCount++) {
 	       wetRad_w4.ignore(100000, '\n');
@@ -360,7 +375,7 @@ void main_driver(const char* argv)
 	      Abort("Please provide eskernel_beta within the range [1,3]*eskernel_fluid.");
 	   }
 
-           int targetLine = (eskernel_beta[j]-eskernel_fluid[j])*10+1;
+       int targetLine = ((int)(10*eskernel_beta[j])-10*eskernel_fluid[j])+1;
 	   //Print() << targetLine << std::endl;
 	   std::ifstream wetRad_w5("wetRad_w5.dat");
 	   for (int lineCount=0; lineCount < targetLine-1; lineCount++) {
@@ -376,7 +391,7 @@ void main_driver(const char* argv)
 	      Abort("Please provide eskernel_beta within the range [1,3]*eskernel_fluid.");
 	   }
 
-           int targetLine = (eskernel_beta[j]-eskernel_fluid[j])*10+1;
+       int targetLine = ((int)(10*eskernel_beta[j])-10*eskernel_fluid[j])+1;
 	   //Print() << targetLine << std::endl;
 	   std::ifstream wetRad_w6("wetRad_w6.dat");
 	   for (int lineCount=0; lineCount < targetLine-1; lineCount++) {
@@ -388,8 +403,41 @@ void main_driver(const char* argv)
 	   wetRad_w6.close();
            //wetRad[j] = 1.478*dxAv; // With beta = 8.64
        }
+       else if (eskernel_fluid[j] == 3) {
+	   if (eskernel_beta[j] < 3 || eskernel_beta[j] > 9) {
+	      Abort("Please provide eskernel_beta within the range [1,3]*eskernel_fluid.");
+	   }
+
+       int targetLine = ((int)(10*eskernel_beta[j])-10*eskernel_fluid[j])+1;
+	   //Print() << targetLine << std::endl;
+	   std::ifstream wetRad_w3("wetRad_w3.dat");
+	   for (int lineCount=0; lineCount < targetLine-1; lineCount++) {
+	       wetRad_w3.ignore(100000, '\n');
+	   }
+	   wetRad_w3 >> wetRad[j];
+	   Print() << "wetRad read from file is " << wetRad[j] << std::endl;
+	   wetRad[j] *= dxAv;
+	   wetRad_w3.close();
+       }
+       else if (eskernel_fluid[j] == 7) {
+	   if (eskernel_beta[j] < 7 || eskernel_beta[j] > 21) {
+	      Abort("Please provide eskernel_beta within the range [1,3]*eskernel_fluid.");
+	   }
+
+       int targetLine = ((int)(10*eskernel_beta[j])-10*eskernel_fluid[j])+1;
+	   Print() << "TARGET: " << targetLine << std::endl;
+	   std::ifstream wetRad_w7("wetRad_w7.dat");
+	   for (int lineCount=0; lineCount < targetLine-1; lineCount++) {
+	       wetRad_w7.ignore(100000, '\n');
+	   }
+	   wetRad_w7 >> wetRad[j];
+	   Print() << "wetRad read from file is " << wetRad[j] << std::endl;
+	   wetRad[j] *= dxAv;
+	   wetRad_w7.close();
+       }
        else {
-	   Abort("Currently the code only supports pkernel_fluid = 1,3,4,6 or eskernel_fluid = 4,5,6.");
+           Abort("Currently the code only supports pkernel_fluid = 1,3,4,6 or eskernel_fluid = 3,4,5,6,7.");
+	   //wetRad[j] = 1.255*dxAv;
        }
     }
 
@@ -716,14 +764,14 @@ void main_driver(const char* argv)
            max_sr_range = range ;
         }
     }
-    for(int i=0;i<nspecies;i++) {
-        Real range = sigma_wall[i]*rmax_wall[i];
+//    for(int i=0;i<nspecies;i++) {
+//        Real range = sigma_wall[i]*rmax_wall[i];
 
-        if(range > max_sr_range)
-        {
-           max_sr_range = range ;
-        }
-    }
+//        if(range > max_sr_range)
+//        {
+//           max_sr_range = range ;
+//        }
+//    }
     
     if(max_sr_range > max_es_range)
     {
@@ -739,7 +787,7 @@ void main_driver(const char* argv)
 
     if (restart < 0 && particle_restart < 0) {
         // create particles
-        if (sr_tog == 4) {
+        if (false) {
             //particles.InitParticlesFromFile(ionParticle, dxp);
         }
         else {
@@ -869,12 +917,61 @@ void main_driver(const char* argv)
 
 
 //    // Writes instantaneous flow field and some other stuff? Check with Guy.
-    WritePlotFileHydro(0, time, geom, umac, pres, umacM);
+    //WritePlotFileHydro(0, time, geom, umac, pres, umacM);
     remove("bulkFlowEst");
     //Time stepping loop
 
 
-    dt = dt*1e-5;
+
+    if(ramp_step==2){
+        dt = dt*1e-7;
+	if(step < 100 && step > 50) dt = dt*2;
+        if(step < 150 && step > 100) dt = dt*4;
+        if(step < 200 && step > 150) dt = dt*8;
+        if(step < 250 && step > 200) dt = dt*16;
+        if(step < 300 && step > 250) dt = dt*32;
+        if(step < 350 && step > 300) dt = dt*64;
+        if(step < 400 && step > 350) dt = dt*128;
+        if(step < 500 && step > 400) dt = dt*128*sqrt(5);
+        if(step < 600 && step > 500) dt = dt*640;
+        if(step < 700 && step > 600) dt = dt*640*sqrt(5);
+        if(step < 800 && step > 700) dt = dt*3200;
+        if(step < 900 && step > 800) dt = dt*3200*sqrt(5);
+        if(step < 1000 && step > 900) dt = dt*16000;
+        if(step < 1100 && step > 1000) dt = dt*16000*sqrt(5);
+        if(step < 1200 && step > 1100) dt = dt*80000;
+        if(step < 1300 && step > 1200) dt = dt*80000*sqrt(5);
+        if(step < 1400 && step > 1300) dt = dt*400000;
+        if(step < 1500 && step > 1400) dt = dt*400000*sqrt(5);
+        if(step < 1600 && step > 1500) dt = dt*2000000;
+        if(step < 1700 && step > 1600) dt = dt*2000000*sqrt(5);
+        if(step > 1700) dt = dt*10000000;
+
+    }else if(ramp_step==1){
+        dt = dt*1e-6;
+	if(step < 40 && step > 20) dt = dt*2;
+        if(step < 80 && step > 40) dt = dt*10;
+        if(step < 160 && step > 80) dt = dt*50;
+        if(step < 240 && step > 160) dt = dt*100;
+        if(step < 320 && step > 240) dt = dt*500;
+        if(step < 400 && step > 320) dt = dt*1000;
+        if(step < 480 && step > 400) dt = dt*5000;
+        if(step < 560 && step > 480) dt = dt*10000;
+        if(step < 640 && step > 560) dt = dt*50000;
+        if(step < 720 && step > 640) dt = dt*100000;
+        if(step < 800 && step > 720) dt = dt*500000;
+        if(step > 800) dt = dt*1000000;
+
+    }else{
+        dt = dt*1e-5;
+	if(step < 40 && step > 20) dt = dt*10;
+        if(step < 60 && step > 40) dt = dt*100;
+        if(step < 80 && step > 60) dt = dt*1000;
+        if(step < 100 && step > 80) dt = dt*10000;
+        if(step > 100) dt = dt*100000;
+    }
+            
+    
 
     particles.initRankLists(simParticles);
 
@@ -886,43 +983,284 @@ void main_driver(const char* argv)
 
         // timer for time step
         Real time1 = ParallelDescriptor::second();
-
-        if(istep == 20)
+        
+        if(ramp_step==2)
         {
-                dt = dt*10;
-                Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            if(istep == 50)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            
+            if(istep == 100)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 150)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+
+            if(istep == 200)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 250)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 300)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            if(istep == 350)
+            {
+                    dt = dt*2;
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 400)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+            
+            if(istep == 500)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+            if(istep == 600)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+            if(istep == 700)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+            if(istep == 800)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 900)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            if(istep == 1000)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            if(istep == 1100)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            
+            if(istep == 1200)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }if(istep == 1300)
+            {
+                    dt = dt*sqrt(5);
+                    
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }if(istep == 1400)
+            {
+                    dt = dt*sqrt(5);
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }if(istep == 1500)
+            {
+                    dt = dt*sqrt(5);
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }if(istep == 1600)
+            {
+                    dt = dt*sqrt(5);
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }if(istep == 1700)
+            {
+                    dt = dt*sqrt(5);
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+        }else if(ramp_step==1)
+        {
+            if(istep == 20)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            
+            if(istep == 40)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 80)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+
+            if(istep == 160)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 240)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 320)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 400)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+            
+            if(istep == 480)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+
+            if(istep == 560)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+            if(istep == 640)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+
+            }
+
+            if(istep == 720)
+            {
+                    dt = dt*5;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 800)
+            {
+                    dt = dt*2;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+        }else
+        {
+        
+            if(istep == 20)
+            {
+                    dt = dt*10;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+            if(istep == 40)
+            {
+                    dt = dt*10;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 60)
+            {
+                    dt = dt*10;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 80)
+            {
+                    dt = dt*10;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
+
+            if(istep == 100)
+            {
+                    dt = dt*10;
+                    Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
+            }
         }
 
 
-        if(istep == 40)
-        {
-                dt = dt*10;
-                Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
-        }
+            //particles.SetPosition(1, prob_hi[0]*0.5, prob_hi[1]*0.5, prob_hi[2]*0.5);
+//            Real x1 = 0.51*prob_hi[0];
+//            Real y1 = 0.51*prob_hi[1];
+//            Real z1 = 0.51*prob_hi[2];
+//            
+//            particles.SetPosition(1,x1 ,y1, z1);
+//            particles.SetPosition(2,x1 ,y1, z1);
+//            
+//            x1 = 0.5*prob_hi[0] + (amrex::Random()-0.5)*(prob_hi[0]-prob_lo[0])*0.25;
+//            y1 = 0.1875*dxp[0];
+//            z1 = 0.5*prob_hi[2] + (amrex::Random()-0.5)*(prob_hi[2]-prob_lo[2])*0.25;
+            
+            
+//            Real costheta = 2.*amrex::Random() - 1.;
+//            Real sintheta = sqrt(1. - costheta*costheta);
 
-        if(istep == 60)
-        {
-                dt = dt*10;
-                Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
-        }
+//            Real phi = amrex::Random() * 2. * 3.14159265358979;
+//            Real cosphi = std::cos(phi);
+//            Real sinphi = std::sin(phi);
 
-        if(istep == 80)
-        {
-                dt = dt*10;
-                Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
-        }
+//            Real dr = 2*dxp[0];
 
-        if(istep == 100)
-        {
-                dt = dt*10;
-                Print() << "\n\nNew dt: " << dt << std::endl<< std::endl<< std::endl;
-        }
-
-
-//        if(istep == 1)
-//        {
-//            particles.SetPosition(1, prob_hi[0]*0.5, 0.5e-7, prob_hi[2]*0.5);
-//        }
+//            Real x2 = x1 + dr*cosphi;
+//            Real y2 = y1;
+//            Real z2 = z1 + dr*sinphi;;
+//            
+//            particles.SetPosition(1,x1 ,y1, z1);
+//            particles.SetPosition(2,x2 ,y2, z2);
 
     
         //Most of these functions are sensitive to the order of execution. We can fix this, but for now leave them in this order.
@@ -948,7 +1286,7 @@ void main_driver(const char* argv)
             // set velx/y/z and forcex/y/z for each particle to zero
             particles.ResetMarkers(0);
         }
-//	    particles.SetForce(1,1,0,0);
+	    //particles.SetForce(1,1,0,0);
 //        Real origin[3];
 //        origin[0] = prob_hi[0]/2.0;
 //        origin[1] = prob_hi[1]/2.0;
@@ -981,8 +1319,10 @@ void main_driver(const char* argv)
 	    particles.computeForcesCoulombGPU(simParticles);
 	}
 
+        Print() << "Before spreading.\n";
         // compute other forces and spread to grid
-        particles.SpreadIonsGPU(dx, dxp, geom, umac, efieldCC, source, sourceTemp);
+        particles.SpreadIonsGPU(dx, dxp, geom, umac, RealFaceCoords, efieldCC, source, sourceTemp);
+        Print() << "After spreading.\n";
 
         //particles.BuildCorrectionTable(dxp,1);
 
@@ -1062,7 +1402,7 @@ void main_driver(const char* argv)
                         sourceTemp[d].setVal(0.0);      // reset source terms
                     }
 
-                particles.SpreadIonsGPU(dx, geom, umac, source, sourceTemp);
+                particles.SpreadIonsGPU(dx, geom, umac, RealFaceCoords, source, sourceTemp);
 
                 MultiFab::Add(source[0],sourceRFD[0],0,0,sourceRFD[0].nComp(),sourceRFD[0].nGrow());
                 MultiFab::Add(source[1],sourceRFD[1],0,0,sourceRFD[1].nComp(),sourceRFD[1].nGrow());
@@ -1096,10 +1436,10 @@ void main_driver(const char* argv)
             if ((n_steps_skip > 0 && istep == n_steps_skip) ||
                 (n_steps_skip < 0 && istep%n_steps_skip == 0) ) {
 
-                particles.MeanSqrCalc(0, 1);
+                //particles.MeanSqrCalc(0, 1);
             }
             else {
-                particles.MeanSqrCalc(0, 0);
+                //particles.MeanSqrCalc(0, 0);
             }
 
             Print() << "Finish move.\n";

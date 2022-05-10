@@ -3,8 +3,6 @@
 
 AMREX_GPU_MANAGED int surfchem_mui::nspec_mui;
 
-AMREX_GPU_MANAGED GpuArray<amrex::Real, MAX_SPECIES> surfchem_mui::mom_inertia;
-
 void InitializeSurfChemMUINamespace()
 {
     // extract inputs parameters
@@ -12,11 +10,6 @@ void InitializeSurfChemMUINamespace()
 
     // number of species involved in mui (via adsorption/desorption)
     pp.get("nspec_mui",nspec_mui);
-
-    // get moment of inertia (used only for diatomic molecules with dof = 5 and e0 = 0)
-    std::vector<amrex::Real> mi_tmp(MAX_SPECIES);
-    pp.getarr("mom_inertia",mi_tmp,0,nspec_mui);
-    for (int n=0; n<nspec_mui; n++) mom_inertia[n] = mi_tmp[n];
 
     return;
 }
@@ -58,10 +51,6 @@ void mui_push(MultiFab& cu, MultiFab& prim, const amrex::Real* dx, mui::uniface2
 
                     uniface.push(channel,{x,y},dens);
                 }
-
-                channel = "CH_temp";
-
-                uniface.push(channel,{x,y},prim_arr(i,j,k,4));
             }
         }
     }
@@ -108,8 +97,6 @@ void mui_fetch(MultiFab& cu, MultiFab& prim, const amrex::Real* dx, mui::uniface
                 double x = prob_lo[0]+(i+0.5)*dx[0];
                 double y = prob_lo[1]+(j+0.5)*dx[1];
                 double dV = dx[0]*dx[1]*dx[2];
-                //double temp = prim_arr(i,j,k,4);
-                double temp = t_lo[2];
 
                 for (int n = 0; n < nspec_mui; ++n)
                 {
@@ -125,84 +112,11 @@ void mui_fetch(MultiFab& cu, MultiFab& prim, const amrex::Real* dx, mui::uniface
                     dc = uniface.fetch(channel,{x,y},step,s,t);
 
                     double mass = molmass[n]/AVONUM;
-                    double kBTm = k_B*temp/mass;
-                    double sqrtkBTm = sqrt(kBTm);
-                    double vx,vy,vz;
-                    double dmomx,dmomy,dmomz,derg;
-
-                    dmomx = dmomy = dmomz = derg = 0.;
-
-                    // sample incoming velocities and compute translational energy change
-                    for (int l=0;l<ac;l++)
-                    {
-                        vx = RandomNormal(0.,sqrtkBTm);
-                        vy = RandomNormal(0.,sqrtkBTm);
-                        vz = -sqrt(-2.*kBTm*log(1.-Random()));
-
-                        dmomx -= mass*vx;
-                        dmomy -= mass*vy;
-                        dmomz += mass*vz;   // note the sign
-                        derg  -= 0.5*mass*(vx*vx+vy*vy+vz*vz);
-                    }
-
-                    // sample outgoing velocities and compute translational energy change
-                    for (int l=0;l<dc;l++)
-                    {
-                        vx = RandomNormal(0.,sqrtkBTm);
-                        vy = RandomNormal(0.,sqrtkBTm);
-                        vz = sqrt(-2.*kBTm*log(1.-Random()));
-
-                        dmomx += mass*vx;
-                        dmomy += mass*vy;
-                        dmomz += mass*vz;
-                        derg  += 0.5*mass*(vx*vx+vy*vy+vz*vz);
-                    }
-
-                    // sample non-translational energy change
-                    if (e0[n]!=0.)
-                    {
-                        amrex::Abort("Currently, only the case with e0 = 0 is implemented.");
-                    }
-
-                    if (dof[n]!=3 && dof[n]!=5)
-                    {
-                        amrex::Abort("Currently, only the monoatomic and diatomic cases are implemented.");
-                    }
-
-                    if (dof[n]==5 && e0[n]==0.)
-                    // in this case (i.e. diatomic molecules), non-translational energy = rotational energy
-                    // in the monoatomic case, non-translational energy = 0
-                    {
-                        double kBTI = k_B*temp/mom_inertia[n];
-                        double sqrtkBTI = sqrt(kBTI);
-                        double omegax,omegay;
-
-                        for (int l=0;l<ac;l++)
-                        {
-                            // angular velocity (diatomic)
-                            omegax = RandomNormal(0.,sqrtkBTI);
-                            omegay = RandomNormal(0.,sqrtkBTI);
-                            derg -= 0.5*mom_inertia[n]*(omegax*omegax+omegay*omegay);
-                        }
-
-                        for (int l=0;l<dc;l++)
-                        {
-                            // angular velocity (diatomic)
-                            omegax = RandomNormal(0.,sqrtkBTI);
-                            omegay = RandomNormal(0.,sqrtkBTI);
-                            derg += 0.5*mom_inertia[n]*(omegax*omegax+omegay*omegay);
-                        }
-                    }
 
                     // update
 
                     cu_arr(i,j,k,0) += (dc-ac)*mass/dV;
                     cu_arr(i,j,k,5+n) += (dc-ac)*mass/dV;
-
-                    cu_arr(i,j,k,1) += dmomx/dV;
-                    cu_arr(i,j,k,2) += dmomy/dV;
-                    cu_arr(i,j,k,3) += dmomz/dV;
-                    cu_arr(i,j,k,4) += derg/dV;
                 }
             }
         }

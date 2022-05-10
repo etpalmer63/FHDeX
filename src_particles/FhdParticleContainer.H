@@ -63,8 +63,10 @@ struct FHD_realData {
         sigma,
         eepsilon,
         potential,
-	p3m_radius,
+	    p3m_radius,
         spring,
+        omega,
+        lambda,
         count    // Awesome little trick! (only works if first field is 0)
     };
 
@@ -85,7 +87,41 @@ struct FHD_realData {
             "pred_velz",
             "pred_forcex",
             "pred_forcey",
-            "pred_forcez"
+            "pred_forcez",
+            "vx",
+        "vy",
+        "vz",
+        "fx",
+        "fy",
+        "fz",
+        "ux",
+        "uy",
+        "uz",
+        "mass",
+        "R",
+        "q",
+        "accelFactor",
+        "dragFactor",
+        "ox",
+        "oy",
+        "oz",
+        "ax",
+        "ay",
+        "az",
+        "travelTime",
+        "diffAv",
+        "stepCount",
+        "multi",
+        "dryDiff",
+        "wetDiff",
+        "totalDiff",
+        "sigma",
+        "eepsilon",
+        "potential",
+	    "p3m_radius",
+        "spring",
+        "omega",
+        "lambda"
         };
     };
 };
@@ -102,15 +138,20 @@ struct FHD_intData {
         species,
         visible,
         pinned,
+        newSpecies,
         count
     };
 
     static Vector<std::string> names() {
         return Vector<std::string> {
-            "id_0",
-            "cpu_0",
-            "id_1",
-            "cpu_1",
+            "soted",
+            "i",
+            "j",
+            "k",
+            "species",
+            "visible",
+            "pinned",
+            "new_species"
         };
     };
 };
@@ -130,6 +171,15 @@ struct FHD_realDataLW {
         count    // Awesome little trick! (only works if first field is 0)
     };
 };
+
+
+typedef struct {
+
+    Real x;
+    Real y;
+    Real z;
+
+} Triplet;
 
 
 class FhdParIter
@@ -198,7 +248,7 @@ public:
     void SetForce(int id, Real x, Real y, Real z);
     void writeVel(int id);
 
-    void MeanSqrCalc(int lev, int reset);
+    void MeanSqrCalc(int lev, int step);
 
     void BuildCorrectionTable(const Real* dx, int setMeasureFinal);
 
@@ -236,12 +286,15 @@ public:
                     const paramPlane* paramPlaneList, const int paramPlaneCount, int sw);
 
     void SpreadIonsGPU(const Real* dxFluid, const Real* dxE, const Geometry geomF,
-                    const std::array<MultiFab, AMREX_SPACEDIM>& umac, std::array<MultiFab, AMREX_SPACEDIM>& efield,
+                    const std::array<MultiFab, AMREX_SPACEDIM>& umac, 
+		    const std::array<MultiFab, AMREX_SPACEDIM>& coords,
+		    std::array<MultiFab, AMREX_SPACEDIM>& efield,
                     std::array<MultiFab, AMREX_SPACEDIM>& source,
                     std::array<MultiFab, AMREX_SPACEDIM>& sourceTemp);
 
     void SpreadIonsGPU(const Real* dxFluid, const Geometry geomF,
                     const std::array<MultiFab, AMREX_SPACEDIM>& umac,
+		    const std::array<MultiFab, AMREX_SPACEDIM>& coords,
                     std::array<MultiFab, AMREX_SPACEDIM>& source,
                     std::array<MultiFab, AMREX_SPACEDIM>& sourceTemp);
     
@@ -271,6 +324,8 @@ public:
 
 
     void invertMatrix();
+    
+    void GetAllParticlePositions(Real* posx, Real* posy, Real* posz, int totalParticles);
 
 
     /****************************************************************************
@@ -337,6 +392,12 @@ public:
     Real threepmMin[50];
     Real threepmPoints[50]; 
     Real threepmRange = 5; 
+    
+    int bottomListLength;
+    int topListLength;
+    
+    Triplet* bottomList;
+    Triplet* topList;
 
   //protected:
 

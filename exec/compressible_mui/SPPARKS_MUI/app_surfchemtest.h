@@ -43,8 +43,8 @@ class AppSurfchemtest : public AppLattice {
   int engstyle;
   int firsttime;
   // variables on each lattice site
-  int *type,*element,*ac1,*ac2,*ac3,*ac4,*ac5,*dc1,*dc2,*dc3,*dc4,*dc5,*dac1,*dac2,*dac3,*dac4,*dac5,*adc1,*adc2,*adc3,*adc4,*adc5;  
-  double *density1,*density2,*density3,*density4,*density5,*temp;      
+  int *type,*element,*ac1,*ac2,*ac3,*ac4,*ac5,*dc1,*dc2,*dc3,*dc4,*dc5,*dac1,*dac2,*dac3,*dac4,*dac5,*adc1,*adc2,*adc3,*adc4,*adc5;
+  double *density1,*density2,*density3,*density4,*density5,*temp,*Vz;
 
   int *esites;
   int *echeck;
@@ -56,7 +56,7 @@ class AppSurfchemtest : public AppLattice {
   // adding desorption reactions is exactly same as the first-order reaction case
   int none,ntwo,nthree,nads,ndes,ndissocads,nassocdes;
   double *srate,*drate,*trate,*adsrate,*desrate,*dadsrate,*adesrate;
-  bool ads_is_rate,dads_is_rate,des_is_temp_dep;
+  bool ads_is_rate,dads_is_rate;
   double *spropensity,*dpropensity,*tpropensity,*adespropensity;
   int *stype,**dtype,**ttype,*adstype,*destype,**dadstype,**adestype;
   int *sinput,**dinput,**tinput,*adsinput,*desinput,**dadsinput,**adesinput;

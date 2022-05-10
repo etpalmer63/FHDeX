@@ -20,6 +20,7 @@ struct FHD_realData {
 		R,
 		timeFrac,
 		omega,
+		lambda,
 		radius,
 		mass,
 		count
@@ -36,6 +37,7 @@ struct FHD_realData {
 			"R",
 			"timeFrac",
 			"omega",
+			"lambda",
 			"radius",
 			"mass",
 		};
@@ -51,6 +53,7 @@ struct FHD_intData {
 		j,
 		k,
 		species,
+		newSpecies,
 		count
 	};
 
@@ -101,6 +104,7 @@ public:
 	void InitCollisionCells();
 
 	void Source(const Real dt, const paramPlane* paramPlaneList, const int paramPlaneCount);
+    void SourcePhonons(const Real dt, const paramPlane* paramPlaneList, const int paramPlaneCount);
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	// Main DSMC routines
@@ -108,8 +112,10 @@ public:
 
 	void CalcSelections(Real dt);
 	void CollideParticles(Real dt);
+	void CollideParticles2(Real dt);
 
 	void MoveParticlesCPP(const Real dt, const paramPlane* paramPlaneList, const int paramPlaneCount);
+    void MovePhononsCPP(const Real dt, const paramPlane* paramPlaneList, const int paramPlaneCount, const int step);
 	void externalForce(const Real dt);
 	void updateTimeStep(const Geometry& geom, Real& dt);
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -135,6 +141,12 @@ public:
 		MultiFab& spatialCross1D,
 		const int steps,
 		Real time);
+		
+   void EvaluateStatsPhonon(MultiFab& cuInst,
+		MultiFab& cuMeans,
+		MultiFab& cuVars,
+		const int steps,
+		Real time);
 
 	void OutputParticles();
 		
@@ -154,7 +166,7 @@ public:
 	Real ocollisionCellVol;
 	Real domainVol;
 	Real domSize[3];
-	Real dx[3];
+	//Real dx[3];
 
 	int getSpeciesIndex(int species1, int species2);
 

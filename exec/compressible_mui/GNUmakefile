@@ -9,6 +9,7 @@ USE_OMP       = FALSE
 COMP          = gnu
 DIM           = 3
 TINY_PROFILE  = FALSE
+USE_MUI       = TRUE
 
 USE_PARTICLES = FALSE
 
@@ -24,6 +25,10 @@ include ../../src_chemistry/Make.package
 VPATH_LOCATIONS   += ../../src_chemistry/
 INCLUDE_LOCATIONS += ../../src_chemistry/
 
+include ../../src_MFsurfchem/Make.package
+VPATH_LOCATIONS   += ../../src_MFsurfchem/
+INCLUDE_LOCATIONS += ../../src_MFsurfchem/
+
 include ../../src_surfchem_mui/Make.package
 VPATH_LOCATIONS   += ../../src_surfchem_mui/
 INCLUDE_LOCATIONS += ../../src_surfchem_mui/
@@ -32,9 +37,6 @@ include ../../src_rng/Make.package
 VPATH_LOCATIONS   += ../../src_rng/
 INCLUDE_LOCATIONS += ../../src_rng/
 
-include ../../src_common/src_F90/Make.package
-VPATH_LOCATIONS   += ../../src_common/src_F90
-INCLUDE_LOCATIONS += ../../src_common/src_F90
 
 include ../../src_common/Make.package
 VPATH_LOCATIONS   += ../../src_common/
@@ -61,3 +63,6 @@ else
   LIBRARIES += -L$(FFTW_DIR) -lfftw3_mpi -lfftw3
 endif
 
+ifeq ($(USE_MUI), TRUE)
+  DEFINES += -DMUI
+endif
